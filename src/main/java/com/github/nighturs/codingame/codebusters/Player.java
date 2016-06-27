@@ -13,7 +13,9 @@ class Player {
     static final int GOST_SPEED = 400;
     static final int TRAP_RANGE_INNER = 900;
     static final int TRAP_RANGE_OUTER = 1760;
+    static final int STUN_RANGE = 1760;
     static final int BASE_RANGE = 1600;
+    static final int STUN_COOLDOWN = 20;
     static final int TEST_END = 9999;
 
     static GameState gameState;
@@ -45,7 +47,16 @@ class Player {
                 if (entityType == -1) {
                     visibleGosts.add(Gost.create(entityId, Point.create(y, x), value));
                 } else {
-                    Buster buster = Buster.create(entityId, Point.create(y, x), state == 1, value);
+                    Integer lastTurnUsedStun = gameState.getLastTurnUsedStun().get(entityId);
+                    Buster buster = Buster.create(entityId,
+                            Point.create(y, x),
+                            state == 1,
+                            value,
+                            state == 2,
+                            state == 2 ? value : 0,
+                            lastTurnUsedStun == null ?
+                                    0 :
+                                    Math.max(0, STUN_COOLDOWN - (gameState.getTurn() + 1 - lastTurnUsedStun)));
                     if (entityType == gameState.getMyTeamId()) {
                         myBusters.add(buster);
                     } else {
@@ -67,6 +78,8 @@ class Player {
         strategies.addAll(CatchGost.create(gameState.getMyBusters()));
         strategies.addAll(BringGostToBase.create(gameState.getMyBusters()));
         strategies.addAll(ReleaseGostInBase.create(gameState.getMyBusters()));
+        strategies.addAll(WaitStunExpires.create(gameState.getMyBusters()));
+        strategies.addAll(StunEnemy.create(gameState.getMyBusters()));
         Map<Integer, List<Strategy>> stratsByBuster =
                 strategies.stream().collect(Collectors.groupingBy(a -> a.getBuster().getId()));
 
@@ -83,8 +96,12 @@ class Player {
                     return 3;
                 } else if (s instanceof SearchForGost) {
                     return 4;
+                } else if (s instanceof WaitStunExpires) {
+                    return -100;
+                } else if (s instanceof StunEnemy) {
+                    return -99;
                 }
-                return 100;
+                throw new RuntimeException("Unknown strategy");
             };
             goFoStrats.add(strats.stream()
                     .sorted((a, b) -> Integer.compare(priority.apply(a), priority.apply(b)))
@@ -123,6 +140,109 @@ class Player {
 
     static Point moveAway(Point from, Point to, int d) {
         return moveInLine(from, to, d, -1);
+    }
+
+    private static class WaitStunExpires implements Strategy {
+        private final Buster buster;
+        private final MoveBusterAction action;
+
+        public static List<WaitStunExpires> create(List<Buster> busters) {
+            List<WaitStunExpires> strategies = new ArrayList<>();
+            for (Buster buster : busters) {
+                if (buster.isStunned()) {
+                    strategies.add(new WaitStunExpires(buster, MoveBusterAction.create(buster, buster.getPoint())));
+                }
+            }
+            return strategies;
+        }
+
+        public WaitStunExpires(Buster buster, MoveBusterAction action) {
+            this.buster = buster;
+            this.action = action;
+        }
+
+        @Override
+        public BusterAction busterAction() {
+            return action;
+        }
+
+        @Override
+        public Buster getBuster() {
+            return buster;
+        }
+    }
+
+    private static class StunEnemy implements Strategy {
+        private final Buster buster;
+        private final StunBusterAction action;
+
+        public static List<StunEnemy> create(List<Buster> busters) {
+            final List<StunEnemy> strategies = new ArrayList<>();
+
+            Map<Integer, List<Buster>> busterByEnemy = new HashMap<>();
+
+            for (Buster enemy : gameState.getEnemyBusters()) {
+                for (Buster buster : busters) {
+                    if (buster.isStunned() || buster.getUntilStunIsReady() > 0) {
+                        continue;
+                    }
+                    int distance = dist(enemy.getPoint(), buster.getPoint());
+                    if (distance <= sqr(STUN_RANGE)) {
+                        List<Buster> whoCan = busterByEnemy.get(enemy.getId());
+                        if (whoCan == null) {
+                            whoCan = new ArrayList<>();
+                        }
+                        whoCan.add(buster);
+                        busterByEnemy.put(enemy.getId(), whoCan);
+                    }
+                }
+            }
+
+            final Set<Integer> usedBusters = new HashSet<>();
+
+            busterByEnemy.entrySet()
+                    .stream()
+                    .sorted((a, b) -> Integer.compare(a.getValue().size(), b.getValue().size()))
+                    .forEach(kv -> {
+                        Optional<Buster> whoCanOpt =
+                                kv.getValue().stream().filter(x -> !usedBusters.contains(x.getId())).findFirst();
+                        if (whoCanOpt.isPresent()) {
+                            Buster whoCan = whoCanOpt.get();
+                            strategies.add(new StunEnemy(whoCan,
+                                    StunBusterAction.create(whoCan, gameState.getEnemyBusters()
+                                            .stream()
+                                            .filter(e -> e.getId() == kv.getKey())
+                                            .findAny().get())));
+                            usedBusters.add(whoCan.getId());
+                        }
+                    });
+
+            return strategies;
+        }
+
+        public StunEnemy(Buster buster, StunBusterAction action) {
+            this.buster = buster;
+            this.action = action;
+        }
+
+        @Override
+        public BusterAction busterAction() {
+            return action;
+        }
+
+        @Override
+        public Buster getBuster() {
+            return buster;
+        }
+
+        @Override
+        public String toString() {
+            final StringBuilder sb = new StringBuilder("StunEnemy{");
+            sb.append("buster=").append(buster);
+            sb.append(", action=").append(action);
+            sb.append('}');
+            return sb.toString();
+        }
     }
 
     private static class ReleaseGostInBase implements Strategy {
@@ -409,7 +529,9 @@ class Player {
         private List<Buster> enemyBusters;
         private List<Gost> visibleGosts;
         // memory
+        private int turn = -1;
         private List<Strategy> prevTurnStrats = Collections.emptyList();
+        private Map<Integer, Integer> lastTurnUsedStun = new HashMap<>();
 
         public GameState(int bustersPerPlayer, int ghostCount, int myTeamId) {
             this.bustersPerPlayer = bustersPerPlayer;
@@ -420,6 +542,7 @@ class Player {
 
         @SuppressWarnings("ParameterHidesMemberVariable")
         public void initTurn(List<Buster> myBusters, List<Buster> enemyBusters, List<Gost> visibleGosts) {
+            this.turn++;
             this.myBusters = myBusters;
             this.enemyBusters = enemyBusters;
             this.visibleGosts = visibleGosts;
@@ -427,6 +550,11 @@ class Player {
 
         public void finishTurn(List<Strategy> strategies) {
             this.prevTurnStrats = strategies;
+            for (Strategy strategy : strategies) {
+                if (strategy instanceof StunEnemy) {
+                    lastTurnUsedStun.put(strategy.getBuster().getId(), getTurn());
+                }
+            }
         }
 
         public int getBustersPerPlayer() {
@@ -460,6 +588,14 @@ class Player {
         public Point getMyBasePoint() {
             return myBasePoint;
         }
+
+        public int getTurn() {
+            return turn;
+        }
+
+        public Map<Integer, Integer> getLastTurnUsedStun() {
+            return lastTurnUsedStun;
+        }
     }
 
     private static final class TurnPlan {
@@ -481,6 +617,30 @@ class Player {
                     .sorted((a, b) -> Integer.compare(a.getBuster().getId(), b.getBuster().getId()))
                     .forEach(x -> sb.append(x.formatLine()).append("\n"));
             return sb.toString();
+        }
+    }
+
+    private static final class StunBusterAction implements BusterAction {
+        private final Buster buster;
+        private final Buster enemyBuster;
+
+        public static StunBusterAction create(Buster buster, Buster enemyBuster) {
+            return new StunBusterAction(buster, enemyBuster);
+        }
+
+        public StunBusterAction(Buster buster, Buster enemyBuster) {
+            this.buster = buster;
+            this.enemyBuster = enemyBuster;
+        }
+
+        @Override
+        public Buster getBuster() {
+            return buster;
+        }
+
+        @Override
+        public String formatLine() {
+            return String.format("STUN %s", enemyBuster.getId());
         }
     }
 
@@ -574,16 +734,34 @@ class Player {
         private final Point point;
         private final boolean isCarryingGost;
         private final int carriedGostId;
+        private final boolean isStunned;
+        private final int untilStunExpires;
+        private final int untilStunIsReady;
 
-        public static Buster create(int id, Point point, boolean isCarryingGost, int carriedGostId) {
-            return new Buster(id, point, isCarryingGost, carriedGostId);
+        public static Buster create(int id,
+                                    Point point,
+                                    boolean isCarryingGost,
+                                    int carriedGostId,
+                                    boolean isStunned,
+                                    int untilStunExpires,
+                                    int untilStunIsReady) {
+            return new Buster(id, point, isCarryingGost, carriedGostId, isStunned, untilStunExpires, untilStunIsReady);
         }
 
-        private Buster(int id, Point point, boolean isCarryingGost, int carriedGostId) {
+        public Buster(int id,
+                      Point point,
+                      boolean isCarryingGost,
+                      int carriedGostId,
+                      boolean isStunned,
+                      int untilStunExpires,
+                      int untilStunIsReady) {
             this.id = id;
             this.point = point;
             this.isCarryingGost = isCarryingGost;
             this.carriedGostId = carriedGostId;
+            this.isStunned = isStunned;
+            this.untilStunExpires = untilStunExpires;
+            this.untilStunIsReady = untilStunIsReady;
         }
 
         public int getId() {
@@ -602,6 +780,18 @@ class Player {
             return carriedGostId;
         }
 
+        public boolean isStunned() {
+            return isStunned;
+        }
+
+        public int getUntilStunExpires() {
+            return untilStunExpires;
+        }
+
+        public int getUntilStunIsReady() {
+            return untilStunIsReady;
+        }
+
         @Override
         public String toString() {
             final StringBuilder sb = new StringBuilder("Buster{");
@@ -609,6 +799,9 @@ class Player {
             sb.append(", point=").append(point);
             sb.append(", isCarryingGost=").append(isCarryingGost);
             sb.append(", carriedGostId=").append(carriedGostId);
+            sb.append(", isStunned=").append(isStunned);
+            sb.append(", untilStunExpires=").append(untilStunExpires);
+            sb.append(", untilStunIsReady=").append(untilStunIsReady);
             sb.append('}');
             return sb.toString();
         }
