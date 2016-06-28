@@ -1,7 +1,6 @@
 package com.github.nighturs.codingame.codebusters;
 
 import java.util.*;
-import java.util.function.Function;
 import java.util.stream.Collectors;
 
 @SuppressWarnings({"UtilityClassWithoutPrivateConstructor", "NonFinalUtilityClass"})
@@ -73,43 +72,78 @@ class Player {
 
     public static TurnPlan planTurn() {
         List<Strategy> strategies = new ArrayList<>();
-        strategies.addAll(SearchForGost.create(gameState.getMyBusters()));
-        strategies.addAll(PrepareToCatchGost.create(gameState.getMyBusters()));
-        strategies.addAll(CatchGost.create(gameState.getMyBusters()));
-        strategies.addAll(BringGostToBase.create(gameState.getMyBusters()));
-        strategies.addAll(ReleaseGostInBase.create(gameState.getMyBusters()));
-        strategies.addAll(WaitStunExpires.create(gameState.getMyBusters()));
-        strategies.addAll(StunEnemy.create(gameState.getMyBusters()));
+        strategies.addAll(WaitStunExpires.create(leftForStrategy(gameState.getMyBusters(),
+                strategies,
+                WaitStunExpires.class)));
+        strategies.addAll(StunEnemy.create(leftForStrategy(gameState.getMyBusters(), strategies, StunEnemy.class)));
+        strategies.addAll(ReleaseGostInBase.create(leftForStrategy(gameState.getMyBusters(),
+                strategies,
+                ReleaseGostInBase.class)));
+        strategies.addAll(BringGostToBase.create(leftForStrategy(gameState.getMyBusters(),
+                strategies,
+                BringGostToBase.class)));
+        strategies.addAll(CatchGost.create(leftForStrategy(gameState.getMyBusters(), strategies, CatchGost.class)));
+        strategies.addAll(PrepareToCatchGost.create(leftForStrategy(gameState.getMyBusters(),
+                strategies,
+                PrepareToCatchGost.class)));
+        strategies.addAll(SearchForGost.create(leftForStrategy(gameState.getMyBusters(),
+                strategies,
+                SearchForGost.class)));
+
         Map<Integer, List<Strategy>> stratsByBuster =
                 strategies.stream().collect(Collectors.groupingBy(a -> a.getBuster().getId()));
 
         List<Strategy> goFoStrats = new ArrayList<>();
         for (List<Strategy> strats : stratsByBuster.values()) {
-            final Function<Strategy, Integer> priority = (Strategy s) -> {
-                if (s instanceof ReleaseGostInBase) {
-                    return 0;
-                } else if (s instanceof BringGostToBase) {
-                    return 1;
-                } else if (s instanceof CatchGost) {
-                    return 2;
-                } else if (s instanceof PrepareToCatchGost) {
-                    return 3;
-                } else if (s instanceof SearchForGost) {
-                    return 4;
-                } else if (s instanceof WaitStunExpires) {
-                    return -100;
-                } else if (s instanceof StunEnemy) {
-                    return -99;
-                }
-                throw new RuntimeException("Unknown strategy");
-            };
+
             goFoStrats.add(strats.stream()
-                    .sorted((a, b) -> Integer.compare(priority.apply(a), priority.apply(b)))
+                    .sorted((a, b) -> Integer.compare(priority(a), priority(b)))
                     .findFirst()
                     .get());
         }
 
         return TurnPlan.create(goFoStrats);
+    }
+
+    static List<Buster> leftForStrategy(List<Buster> allBusters,
+                                        List<Strategy> strategies,
+                                        Class<? extends Strategy> strategy) {
+        List<Buster> left = new ArrayList<>();
+        for (Buster buster : allBusters) {
+            boolean vacant = true;
+            for (Strategy strat : strategies) {
+                if (strat.getBuster().getId() == buster.getId() && priority(strat.getClass()) < priority(strategy)) {
+                    vacant = false;
+                }
+            }
+            if (vacant) {
+                left.add(buster);
+            }
+        }
+        return left;
+    }
+
+    static int priority(Class<? extends Strategy> s) {
+        if (Objects.equals(s, ReleaseGostInBase.class)) {
+            return 0;
+        } else if (Objects.equals(s, BringGostToBase.class)) {
+            return 1;
+        } else if (Objects.equals(s, CatchGost.class)) {
+            return 2;
+        } else if (Objects.equals(s, PrepareToCatchGost.class)) {
+            return 3;
+        } else if (Objects.equals(s, SearchForGost.class)) {
+            return 4;
+        } else if (Objects.equals(s, WaitStunExpires.class)) {
+            return -100;
+        } else if (Objects.equals(s, StunEnemy.class)) {
+            return -99;
+        }
+        throw new RuntimeException("Unknown strategy");
+    }
+
+    static int priority(Strategy s) {
+        return priority(s.getClass());
     }
 
     static int dist(Point a, Point b) {
