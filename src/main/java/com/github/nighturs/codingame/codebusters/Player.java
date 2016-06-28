@@ -513,6 +513,13 @@ class Player {
         public static List<SearchForGost> create(List<Buster> busters) {
             List<SearchForGost> strategies = new ArrayList<>();
             for (Buster buster : busters) {
+                Optional<Point> unvisitedPoint = gameState.getGrid().getCloseUnvisitedPoint(buster);
+                if (unvisitedPoint.isPresent()) {
+                    strategies.add(new SearchForGost(buster,
+                            MoveBusterAction.create(buster, unvisitedPoint.get())));
+                    continue;
+                }
+
                 List<Strategy> strats = gameState.getPrevTurnStrats();
                 for (Strategy strat : strats) {
                     if (strat instanceof SearchForGost) {
@@ -574,6 +581,7 @@ class Player {
         private List<Gost> visibleGosts;
         // memory
         private int turn = -1;
+        final private Grid grid;
         private List<Strategy> prevTurnStrats = Collections.emptyList();
         private Map<Integer, Integer> lastTurnUsedStun = new HashMap<>();
         private Map<Integer, Gost> estimatedGosts = new HashMap<>();
@@ -584,6 +592,7 @@ class Player {
             this.myTeamId = myTeamId;
             this.myBasePoint = Point.create(0, 0);
             this.shouldReverseCoordinates = myTeamId != 0;
+            this.grid = Grid.create();
         }
 
         @SuppressWarnings("ParameterHidesMemberVariable")
@@ -594,6 +603,7 @@ class Player {
             this.visibleGosts = visibleGosts;
             updateWithRealGostPositions();
             removeFalseGostEstimations();
+            grid.updateVisits(myBusters);
         }
 
         public void updateWithRealGostPositions() {
@@ -685,6 +695,154 @@ class Player {
 
         public boolean shouldReverseCoordinates() {
             return shouldReverseCoordinates;
+        }
+
+        public Grid getGrid() {
+            return grid;
+        }
+    }
+
+    static class Grid {
+        public static final int GRID_CELL = 1000;
+        public static final int GRID_N = X_UNIT / GRID_CELL;
+        public static final int GRID_M = Y_UNIT / GRID_CELL;
+        private GridCell[][] grid;
+
+        public static Grid create() {
+            GridCell[][] grid = new GridCell[GRID_N][GRID_M];
+            for (int i = 0; i < GRID_N; i++) {
+                for (int h = 0; h < GRID_M; h++) {
+                    grid[i][h] = new GridCell(i, h);
+                }
+            }
+            grid[0][0].setLastVisitTurn(0);
+            return new Grid(grid);
+        }
+
+        public Grid(GridCell[][] grid) {
+            this.grid = grid;
+        }
+
+        public void updateVisits(List<Buster> busters) {
+            for (int i = 0; i < GRID_N; i++) {
+                for (int h = 0; h < GRID_M; h++) {
+                    for (Buster buster : busters) {
+                        if (grid[i][h].busterSeesIt(buster)) {
+                            grid[i][h].setLastVisitTurn(gameState.getTurn());
+                        }
+                    }
+                }
+            }
+        }
+
+        public Optional<Point> getCloseUnvisitedPoint(Buster buster) {
+            int min = Integer.MAX_VALUE;
+            Point p = buster.getPoint();
+            GridCell closestCell = null;
+            for (int i = 0; i < GRID_N; i++) {
+                for (int h = 0; h < GRID_M; h++) {
+                    if (!grid[i][h].isEverVisited()) {
+                        GridCell c = grid[i][h];
+                        if (min > dist(p, c.botRight)) {
+                            min = dist(p, c.botRight);
+                            closestCell = c;
+                        }
+                    }
+                }
+            }
+            return Optional.ofNullable(closestCell).map(x -> x.busterShouldMoveTo(buster));
+        }
+    }
+
+    static class GridCell {
+
+        final int x;
+        final int y;
+        final Point topLeft;
+        final Point topRight;
+        final Point botLeft;
+        final Point botRight;
+        int lastVisitTurn = -1;
+
+        public GridCell(int x, int y) {
+            this.x = x;
+            this.y = y;
+            int gridCell = Grid.GRID_CELL;
+            topLeft = Point.create(x * gridCell, y * gridCell);
+            topRight = Point.create(x * gridCell, y * gridCell + gridCell);
+            botLeft = Point.create(x * gridCell + gridCell, y * gridCell);
+            botRight = Point.create(x * gridCell + gridCell, y * gridCell + gridCell);
+        }
+
+        public boolean busterSeesIt(Buster buster) {
+            Point bp = buster.getPoint();
+            if (dist(bp, topLeft) <= sqr(FOG_UNIT) && dist(bp, topRight) <= sqr(FOG_UNIT) &&
+                    dist(bp, botLeft) <= sqr(FOG_UNIT) && dist(bp, botRight) <= sqr(FOG_UNIT)) {
+                return true;
+            }
+            return false;
+        }
+
+        public Point busterShouldMoveTo(Buster buster) {
+            Point p = buster.getPoint();
+            Point b = topLeft;
+            int max = dist(p, topLeft);
+            if (max < dist(p, topRight)) {
+                b = topRight;
+                max = dist(p, topRight);
+            }
+            if (max < dist(p, botLeft)) {
+                b = botLeft;
+                max = dist(p, botLeft);
+            }
+            if (max < dist(p, botRight)) {
+                b = botRight;
+            }
+            System.err.println(String.format("B=%s, P=%s, C=%s", buster.getId(), b, this));
+            return b;
+        }
+
+
+        public boolean isEverVisited() {
+            return lastVisitTurn != -1;
+        }
+
+        public Point getTopLeft() {
+            return topLeft;
+        }
+
+        public Point getTopRight() {
+            return topRight;
+        }
+
+        public Point getBotLeft() {
+            return botLeft;
+        }
+
+        public Point getBotRight() {
+            return botRight;
+        }
+
+        public int getLastVisitTurn() {
+            return lastVisitTurn;
+        }
+
+        public void setLastVisitTurn(int lastVisitTurn) {
+            this.lastVisitTurn = lastVisitTurn;
+        }
+
+        @Override
+        public String toString() {
+            final StringBuilder sb = new StringBuilder("GridCell{");
+            sb.append("x=").append(x);
+            sb.append(", y=").append(y);
+            sb.append(", topLeft=").append(topLeft);
+            sb.append(", topRight=").append(topRight);
+            sb.append(", botLeft=").append(botLeft);
+            sb.append(", botRight=").append(botRight);
+            sb.append(", lastVisitTurn=").append(lastVisitTurn);
+            sb.append('}');
+            return sb.toString();
         }
     }
 
