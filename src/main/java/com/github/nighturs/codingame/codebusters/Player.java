@@ -581,7 +581,14 @@ class Player {
             this.myBusters = myBusters;
             this.enemyBusters = enemyBusters;
             this.visibleGosts = visibleGosts;
+            updateWithRealGostPositions();
             removeFalseGostEstimations();
+        }
+
+        public void updateWithRealGostPositions() {
+            for (Gost gost : visibleGosts) {
+                estimatedGosts.put(gost.getId(), gost);
+            }
         }
 
         public void finishTurn(List<Strategy> strategies) {
