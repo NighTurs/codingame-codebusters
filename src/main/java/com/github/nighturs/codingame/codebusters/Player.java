@@ -158,21 +158,21 @@ class Player {
         return Point.create(Math.min(Math.max(0, x), X_UNIT), Math.min(Math.max(0, y), Y_UNIT));
     }
 
-    static Point moveInLine(Point a, Point b, int d, int mod) {
+    static Point moveInLine(Point a, Point b, double d, int mod) {
         int h = Math.abs(a.x - b.x);
         int w = Math.abs(a.y - b.y);
         int directionX = b.x - a.x >= 0 ? 1 : -1;
         int directionY = b.y - a.y >= 0 ? 1 : -1;
         int dd = dist(a, b);
-        return cap((int) (a.x + d * h / Math.sqrt(dd) * directionX * mod),
-                (int) (a.y + d * w / Math.sqrt(dd) * directionY * mod));
+        return cap(a.x + (int) Math.ceil(d * h / Math.sqrt(dd)) * directionX * mod,
+                a.y + (int) Math.ceil(d * w / Math.sqrt(dd)) * directionY * mod);
     }
 
-    static Point moveToward(Point from, Point to, int d) {
+    static Point moveToward(Point from, Point to, double d) {
         return moveInLine(from, to, d, 1);
     }
 
-    static Point moveAway(Point from, Point to, int d) {
+    static Point moveAway(Point from, Point to, double d) {
         return moveInLine(from, to, d, -1);
     }
 
@@ -339,7 +339,7 @@ class Player {
                 if (distToBase > sqr(BASE_RANGE)) {
                     toward = moveToward(buster.getPoint(),
                             gameState.getMyBasePoint(),
-                            (int) Math.sqrt(distToBase) - BASE_RANGE + 2);
+                            Math.sqrt(distToBase) - BASE_RANGE);
                 } else {
                     continue;
                 }
@@ -456,11 +456,11 @@ class Player {
                     if (distance > sqr(TRAP_RANGE_OUTER)) {
                         toward = moveToward(buster.point,
                                 gost.escapingTo(),
-                                (int) Math.sqrt(distance) - TRAP_RANGE_OUTER + 2);
+                                Math.sqrt(distance) - TRAP_RANGE_OUTER);
                     } else if (distance < sqr(TRAP_RANGE_INNER)) {
                         toward = moveAway(buster.point,
                                 gost.escapingTo(),
-                                TRAP_RANGE_INNER - (int) Math.sqrt(distance) + 2);
+                                TRAP_RANGE_INNER - Math.sqrt(distance));
                     } else {
                         continue;
                     }
