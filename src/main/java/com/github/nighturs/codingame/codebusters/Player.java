@@ -398,7 +398,7 @@ class Player {
 
             List<Pair<Buster, Gost>> vars = new ArrayList<>();
             for (Buster buster : busters) {
-                for (Gost gost : gameState.getVisibleGosts()) {
+                for (Gost gost : gameState.getEstimatedGosts()) {
                     vars.add(Pair.create(buster, gost));
                 }
             }
@@ -532,6 +532,7 @@ class Player {
         private int turn = -1;
         private List<Strategy> prevTurnStrats = Collections.emptyList();
         private Map<Integer, Integer> lastTurnUsedStun = new HashMap<>();
+        private Map<Integer, Gost> estimatedGosts = new HashMap<>();
 
         public GameState(int bustersPerPlayer, int ghostCount, int myTeamId) {
             this.bustersPerPlayer = bustersPerPlayer;
@@ -546,6 +547,7 @@ class Player {
             this.myBusters = myBusters;
             this.enemyBusters = enemyBusters;
             this.visibleGosts = visibleGosts;
+            removeFalseGostEstimations();
         }
 
         public void finishTurn(List<Strategy> strategies) {
@@ -554,6 +556,34 @@ class Player {
                 if (strategy instanceof StunEnemy) {
                     lastTurnUsedStun.put(strategy.getBuster().getId(), getTurn());
                 }
+            }
+            estimateGostPositions();
+        }
+
+        private void removeFalseGostEstimations() {
+            Set<Integer> visibleGostsIds = visibleGosts.stream().map(Gost::getId).collect(Collectors.toSet());
+            List<Gost> toRemove = new ArrayList<>();
+            for (Gost gost : estimatedGosts.values()) {
+                if (visibleGostsIds.contains(gost.getId())) {
+                    continue;
+                }
+                for (Buster buster : myBusters) {
+                    int distance = dist(buster.getPoint(), gost.getPoint());
+                    if (distance <= sqr(FOG_UNIT)) {
+                        toRemove.add(gost);
+                    }
+                }
+            }
+            for (Gost gostToRemove : toRemove) {
+                estimatedGosts.remove(gostToRemove.getId());
+            }
+        }
+
+        private void estimateGostPositions() {
+            for (Gost gost : visibleGosts) {
+                Gost futureTurnsGost =
+                        Gost.create(gost.getId(), gost.escapingTo(), gost.getTrapAttempts(), gost.getStamina());
+                estimatedGosts.put(futureTurnsGost.getId(), futureTurnsGost);
             }
         }
 
@@ -595,6 +625,10 @@ class Player {
 
         public Map<Integer, Integer> getLastTurnUsedStun() {
             return lastTurnUsedStun;
+        }
+
+        public Collection<Gost> getEstimatedGosts() {
+            return estimatedGosts.values();
         }
     }
 
