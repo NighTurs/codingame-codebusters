@@ -158,22 +158,27 @@ class Player {
         return Point.create(Math.min(Math.max(0, x), X_UNIT), Math.min(Math.max(0, y), Y_UNIT));
     }
 
-    static Point moveInLine(Point a, Point b, double d, int mod) {
+    static Point moveInLine(Point a, Point b, double d, int mod, boolean ensureDistance) {
         int h = Math.abs(a.x - b.x);
         int w = Math.abs(a.y - b.y);
         int directionX = b.x - a.x >= 0 ? 1 : -1;
         int directionY = b.y - a.y >= 0 ? 1 : -1;
         int dd = dist(a, b);
-        return cap(a.x + (int) Math.ceil(d * h / Math.sqrt(dd)) * directionX * mod,
-                a.y + (int) Math.ceil(d * w / Math.sqrt(dd)) * directionY * mod);
+        if (ensureDistance) {
+            return cap(a.x + (int) Math.ceil(d * h / Math.sqrt(dd)) * directionX * mod,
+                    a.y + (int) Math.ceil(d * w / Math.sqrt(dd)) * directionY * mod);
+        } else {
+            return cap((int)Math.round(a.x + d * h / Math.sqrt(dd) * directionX * mod),
+                    (int)Math.round(a.y + d * w / Math.sqrt(dd) * directionY * mod));
+        }
     }
 
-    static Point moveToward(Point from, Point to, double d) {
-        return moveInLine(from, to, d, 1);
+    static Point moveToward(Point from, Point to, double d, boolean ensureDistance) {
+        return moveInLine(from, to, d, 1, ensureDistance);
     }
 
-    static Point moveAway(Point from, Point to, double d) {
-        return moveInLine(from, to, d, -1);
+    static Point moveAway(Point from, Point to, double d, boolean ensureDistance) {
+        return moveInLine(from, to, d, -1, ensureDistance);
     }
 
     private static class WaitStunExpires implements Strategy {
@@ -339,7 +344,7 @@ class Player {
                 if (distToBase > sqr(BASE_RANGE)) {
                     toward = moveToward(buster.getPoint(),
                             gameState.getMyBasePoint(),
-                            Math.sqrt(distToBase) - BASE_RANGE);
+                            Math.sqrt(distToBase) - BASE_RANGE, true);
                 } else {
                     continue;
                 }
@@ -456,11 +461,11 @@ class Player {
                     if (distance > sqr(TRAP_RANGE_OUTER)) {
                         toward = moveToward(buster.point,
                                 gost.escapingTo(),
-                                Math.sqrt(distance) - TRAP_RANGE_OUTER);
+                                Math.sqrt(distance) - TRAP_RANGE_OUTER,
+                                true);
                     } else if (distance < sqr(TRAP_RANGE_INNER)) {
-                        toward = moveAway(buster.point,
-                                gost.escapingTo(),
-                                TRAP_RANGE_INNER - Math.sqrt(distance));
+                        toward =
+                                moveAway(buster.point, gost.escapingTo(), TRAP_RANGE_INNER - Math.sqrt(distance), true);
                     } else {
                         continue;
                     }
@@ -924,7 +929,7 @@ class Player {
             int meanX = x / count;
             int meanY = y / count;
 
-            return moveAway(point, Point.create(meanX, meanY), GOST_SPEED);
+            return moveAway(point, Point.create(meanX, meanY), GOST_SPEED, false);
         }
 
         public int getId() {
