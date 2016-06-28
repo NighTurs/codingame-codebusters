@@ -44,11 +44,11 @@ class Player {
                 int state = in.nextInt();
                 int value = in.nextInt();
                 if (entityType == -1) {
-                    visibleGosts.add(Gost.create(entityId, Point.create(y, x), value, state));
+                    visibleGosts.add(Gost.create(entityId, reverseIfNeeded(Point.create(y, x)), value, state));
                 } else {
                     Integer lastTurnUsedStun = gameState.getLastTurnUsedStun().get(entityId);
                     Buster buster = Buster.create(entityId,
-                            Point.create(y, x),
+                            reverseIfNeeded(Point.create(y, x)),
                             state == 1,
                             value,
                             state == 2,
@@ -144,6 +144,10 @@ class Player {
 
     static int priority(Strategy s) {
         return priority(s.getClass());
+    }
+
+    static Point reverseIfNeeded(Point p) {
+        return gameState.shouldReverseCoordinates ? Point.create(X_UNIT - p.x, Y_UNIT - p.y) : p;
     }
 
     static int dist(Point a, Point b) {
@@ -563,6 +567,7 @@ class Player {
         private final int ghostCount;
         private final int myTeamId;
         private final Point myBasePoint;
+        private final boolean shouldReverseCoordinates;
         // fixed for turn
         private List<Buster> myBusters;
         private List<Buster> enemyBusters;
@@ -577,7 +582,8 @@ class Player {
             this.bustersPerPlayer = bustersPerPlayer;
             this.ghostCount = ghostCount;
             this.myTeamId = myTeamId;
-            this.myBasePoint = myTeamId == 0 ? Point.create(0, 0) : Point.create(X_UNIT, Y_UNIT);
+            this.myBasePoint = Point.create(0, 0);
+            this.shouldReverseCoordinates = myTeamId != 0;
         }
 
         @SuppressWarnings("ParameterHidesMemberVariable")
@@ -675,6 +681,10 @@ class Player {
 
         public Collection<Gost> getEstimatedGosts() {
             return estimatedGosts.values();
+        }
+
+        public boolean shouldReverseCoordinates() {
+            return shouldReverseCoordinates;
         }
     }
 
@@ -791,7 +801,8 @@ class Player {
 
         @Override
         public String formatLine() {
-            return String.format("MOVE %s %s", toPoint.getY(), toPoint.getX());
+            Point actualPoint = reverseIfNeeded(toPoint);
+            return String.format("MOVE %s %s", actualPoint.getY(), actualPoint.getX());
         }
 
         @Override
@@ -1006,43 +1017,12 @@ class Player {
 
         @Override
         public String toString() {
+            Point actualPoint = reverseIfNeeded(this);
             final StringBuilder sb = new StringBuilder("Point{");
-            sb.append("x=").append(x);
-            sb.append(", y=").append(y);
+            sb.append("x=").append(actualPoint.x);
+            sb.append(", y=").append(actualPoint.y);
             sb.append('}');
             return sb.toString();
-        }
-    }
-
-    static final class PointMutable implements PointBase {
-
-        int x, y;
-
-        public static PointMutable create(int x, int y) {
-            return new PointMutable(x, y);
-        }
-
-        private PointMutable(int x, int y) {
-            this.x = x;
-            this.y = y;
-        }
-
-        @Override
-        public int getX() {
-            return 0;
-        }
-
-        @Override
-        public int getY() {
-            return 0;
-        }
-
-        public void setX(int x) {
-            this.x = x;
-        }
-
-        public void setY(int y) {
-            this.y = y;
         }
     }
 

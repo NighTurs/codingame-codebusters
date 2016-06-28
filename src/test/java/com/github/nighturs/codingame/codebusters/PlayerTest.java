@@ -48,9 +48,4 @@ public class PlayerTest {
         assertEquals(p(Player.X_UNIT, Player.Y_UNIT), cap(Player.X_UNIT + 100, Player.Y_UNIT + 100));
         assertEquals(p(500, 600), cap(500, 600));
     }
-
-    @Test
-    public void testMoveToward() {
-        System.out.println(Player.moveToward(p(5444, 7517), p(6558, 9812), 2550 - 1760));
-    }
 }

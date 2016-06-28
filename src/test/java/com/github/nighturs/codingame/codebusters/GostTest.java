@@ -14,13 +14,13 @@ public class GostTest {
     public void testEscapingTo() {
         Player.gameState = TestUtils.gs();
         Player.gameState.initTurn(Arrays.asList(b(1000, 2500), b(5000, 5000)),
-                Arrays.asList(b(1500, 1400)), null);
+                Arrays.asList(b(1500, 1400)), Collections.emptyList());
         Gost g = g(1000, 1600);
-        assertEquals(p(767, 1274), g.escapingTo());
-        Player.gameState.initTurn(Arrays.asList(b(100, 100)), Collections.emptyList(), null);
+        assertEquals(p(768, 1275), g.escapingTo());
+        Player.gameState.initTurn(Arrays.asList(b(100, 100)), Collections.emptyList(), Collections.emptyList());
         g = g(0, 0);
         assertEquals(p(0, 0), g.escapingTo());
-        Player.gameState.initTurn(Collections.emptyList(), Collections.emptyList(), null);
+        Player.gameState.initTurn(Collections.emptyList(), Collections.emptyList(), Collections.emptyList());
         g = g(0, 0);
         assertEquals(p(0, 0), g.escapingTo());
     }
