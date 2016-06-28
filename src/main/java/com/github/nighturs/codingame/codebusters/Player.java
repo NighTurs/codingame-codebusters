@@ -45,7 +45,7 @@ class Player {
                 int state = in.nextInt();
                 int value = in.nextInt();
                 if (entityType == -1) {
-                    visibleGosts.add(Gost.create(entityId, Point.create(y, x), value));
+                    visibleGosts.add(Gost.create(entityId, Point.create(y, x), value, state));
                 } else {
                     Integer lastTurnUsedStun = gameState.getLastTurnUsedStun().get(entityId);
                     Buster buster = Buster.create(entityId,
@@ -811,15 +811,18 @@ class Player {
         private final int id;
         private final Point point;
         private final int trapAttempts;
+        private final int stamina;
 
-        static Gost create(int id, Point point, int trapAttempts) {
-            return new Gost(id, point, trapAttempts);
+        static Gost create(int id, Point point, int trapAttempts, int stamina) {
+
+            return new Gost(id, point, trapAttempts, stamina);
         }
 
-        private Gost(int id, Point point, int trapAttempts) {
+        public Gost(int id, Point point, int trapAttempts, int stamina) {
             this.id = id;
             this.point = point;
             this.trapAttempts = trapAttempts;
+            this.stamina = stamina;
         }
 
         public Point escapingTo() {
@@ -859,6 +862,10 @@ class Player {
 
         public int getTrapAttempts() {
             return trapAttempts;
+        }
+
+        public int getStamina() {
+            return stamina;
         }
 
         @Override

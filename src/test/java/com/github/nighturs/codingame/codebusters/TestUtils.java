@@ -14,6 +14,6 @@ class TestUtils {
     }
 
     static Player.Gost g(int x, int y) {
-        return Player.Gost.create(0, p(x, y), 0);
+        return Player.Gost.create(0, p(x, y), 0, 0);
     }
 }
