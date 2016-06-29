@@ -220,6 +220,7 @@ class Player {
     }
 
     private static class StunEnemy implements Strategy {
+        private static final int STUN_AGAIN_REMAINED_THRESHOLD = 2;
         private final Buster buster;
         private final StunBusterAction action;
 
@@ -229,6 +230,9 @@ class Player {
             Map<Integer, List<Buster>> busterByEnemy = new HashMap<>();
 
             for (Buster enemy : gameState.getEnemyBusters()) {
+                if (enemy.isStunned() && STUN_AGAIN_REMAINED_THRESHOLD < enemy.getUntilStunExpires()) {
+                    continue;
+                }
                 for (Buster buster : busters) {
                     if (buster.isStunned() || buster.getUntilStunIsReady() > 0) {
                         continue;
