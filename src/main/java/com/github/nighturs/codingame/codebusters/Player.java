@@ -82,6 +82,7 @@ class Player {
         strategies.addAll(BringGostToBase.create(leftForStrategy(gameState.getMyBusters(),
                 strategies,
                 BringGostToBase.class)));
+        strategies.addAll(Scout.create(leftForStrategy(gameState.getMyBusters(), strategies, Scout.class)));
         strategies.addAll(CatchGost.create(leftForStrategy(gameState.getMyBusters(), strategies, CatchGost.class)));
         strategies.addAll(PrepareToCatchGost.create(leftForStrategy(gameState.getMyBusters(),
                 strategies,
@@ -128,12 +129,14 @@ class Player {
             return 0;
         } else if (Objects.equals(s, BringGostToBase.class)) {
             return 1;
-        } else if (Objects.equals(s, CatchGost.class)) {
+        } else if (Objects.equals(s, Scout.class)) {
             return 2;
-        } else if (Objects.equals(s, PrepareToCatchGost.class)) {
+        } else if (Objects.equals(s, CatchGost.class)) {
             return 3;
-        } else if (Objects.equals(s, SearchForGost.class)) {
+        } else if (Objects.equals(s, PrepareToCatchGost.class)) {
             return 4;
+        } else if (Objects.equals(s, SearchForGost.class)) {
+            return 5;
         } else if (Objects.equals(s, WaitStunExpires.class)) {
             return -100;
         } else if (Objects.equals(s, StunEnemy.class)) {
@@ -562,6 +565,69 @@ class Player {
         }
     }
 
+    private static class Scout implements Strategy {
+        public final static int MAX_TURNS_VALID = 10;
+        private final MoveBusterAction action;
+        private final Buster buster;
+
+        public static List<Scout> create(List<Buster> busters) {
+            List<Scout> strategies = new ArrayList<>();
+            if (gameState.getTurn() > MAX_TURNS_VALID) {
+                return strategies;
+            }
+
+            Set<Integer> busyBusters = new HashSet<>();
+
+            for (GridCell cell : gameState.getGrid().getScoutCells()) {
+                if (cell.isEverVisited()) {
+                    continue;
+                }
+                int minDist = Integer.MAX_VALUE;
+                Buster bestBuster = null;
+                for (Buster buster : busters) {
+                    if (busyBusters.contains(buster.getId())) {
+                        continue;
+                    }
+                    int distance = dist(buster.getPoint(), cell.busterShouldMoveTo(buster));
+                    if (minDist > distance) {
+                        minDist = distance;
+                        bestBuster = buster;
+                    }
+                }
+                if (bestBuster != null) {
+                    busyBusters.add(bestBuster.getId());
+                    strategies.add(new Scout(MoveBusterAction.create(bestBuster, cell.busterShouldMoveTo(bestBuster)),
+                            bestBuster));
+                }
+            }
+            return strategies;
+        }
+
+        public Scout(MoveBusterAction action, Buster buster) {
+            this.action = action;
+            this.buster = buster;
+        }
+
+        @Override
+        public BusterAction busterAction() {
+            return action;
+        }
+
+        @Override
+        public Buster getBuster() {
+            return buster;
+        }
+
+        @Override
+        public String toString() {
+            final StringBuilder sb = new StringBuilder("Scout{");
+            sb.append("action=").append(action);
+            sb.append(", buster=").append(buster);
+            sb.append('}');
+            return sb.toString();
+        }
+    }
+
     private interface Strategy {
 
         BusterAction busterAction();
@@ -707,6 +773,8 @@ class Player {
         public static final int GRID_N = X_UNIT / GRID_CELL;
         public static final int GRID_M = Y_UNIT / GRID_CELL;
         private GridCell[][] grid;
+        // sorted in priority order
+        private List<GridCell> scoutCells;
 
         public static Grid create() {
             GridCell[][] grid = new GridCell[GRID_N][GRID_M];
@@ -716,11 +784,13 @@ class Player {
                 }
             }
             grid[0][0].setLastVisitTurn(0);
-            return new Grid(grid);
+            List<GridCell> scouteCells = Arrays.asList(grid[6][7], grid[2][10], grid[7][2]);
+            return new Grid(grid, scouteCells);
         }
 
-        public Grid(GridCell[][] grid) {
+        public Grid(GridCell[][] grid, List<GridCell> scoutCells) {
             this.grid = grid;
+            this.scoutCells = scoutCells;
         }
 
         public void updateVisits(List<Buster> busters) {
@@ -751,6 +821,10 @@ class Player {
                 }
             }
             return Optional.ofNullable(closestCell).map(x -> x.busterShouldMoveTo(buster));
+        }
+
+        public List<GridCell> getScoutCells() {
+            return scoutCells;
         }
     }
 
@@ -798,7 +872,6 @@ class Player {
             if (max < dist(p, botRight)) {
                 b = botRight;
             }
-            System.err.println(String.format("B=%s, P=%s, C=%s", buster.getId(), b, this));
             return b;
         }
 
@@ -970,6 +1043,14 @@ class Player {
 
         public Point getToPoint() {
             return toPoint;
+        }
+
+        @Override
+        public String toString() {
+            final StringBuilder sb = new StringBuilder("MoveBusterAction{");
+            sb.append("toPoint=").append(toPoint);
+            sb.append('}');
+            return sb.toString();
         }
     }
 
