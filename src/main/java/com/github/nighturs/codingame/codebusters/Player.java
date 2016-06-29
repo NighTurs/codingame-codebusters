@@ -1,6 +1,7 @@
 package com.github.nighturs.codingame.codebusters;
 
 import java.util.*;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 
 @SuppressWarnings({"UtilityClassWithoutPrivateConstructor", "NonFinalUtilityClass"})
@@ -83,10 +84,10 @@ class Player {
                 strategies,
                 BringGostToBase.class)));
         strategies.addAll(Scout.create(leftForStrategy(gameState.getMyBusters(), strategies, Scout.class)));
-        strategies.addAll(CatchGost.create(leftForStrategy(gameState.getMyBusters(), strategies, CatchGost.class)));
         strategies.addAll(PrepareToCatchGost.create(leftForStrategy(gameState.getMyBusters(),
                 strategies,
                 PrepareToCatchGost.class)));
+        strategies.addAll(CatchGost.create(leftForStrategy(gameState.getMyBusters(), strategies, CatchGost.class)));
         strategies.addAll(SearchForGost.create(leftForStrategy(gameState.getMyBusters(),
                 strategies,
                 SearchForGost.class)));
@@ -131,9 +132,9 @@ class Player {
             return 1;
         } else if (Objects.equals(s, Scout.class)) {
             return 2;
-        } else if (Objects.equals(s, CatchGost.class)) {
-            return 3;
         } else if (Objects.equals(s, PrepareToCatchGost.class)) {
+            return 3;
+        } else if (Objects.equals(s, CatchGost.class)) {
             return 4;
         } else if (Objects.equals(s, SearchForGost.class)) {
             return 5;
@@ -398,7 +399,9 @@ class Player {
                 }
                 Optional<Gost> gostOpt = gameState.visibleGosts.stream()
                         .filter(g -> dist(g.getPoint(), buster.getPoint()) <= sqr(TRAP_RANGE_OUTER) &&
-                                dist(g.getPoint(), buster.getPoint()) >= sqr(TRAP_RANGE_INNER)).findFirst();
+                                dist(g.getPoint(), buster.getPoint()) >= sqr(TRAP_RANGE_INNER))
+                        .sorted((a, b) -> Integer.compare(a.getStamina(), b.getStamina()))
+                        .findFirst();
                 if (!gostOpt.isPresent()) {
                     continue;
                 }
@@ -435,6 +438,8 @@ class Player {
     }
 
     private static class PrepareToCatchGost implements Strategy {
+        private static final int BIG_CATH_TRESHOLD = 4;
+        private static final int STEPS_TO_REDUCE_TRESHOLD = 2;
         private final MoveBusterAction action;
         private final Buster buster;
         private final Gost goingForGost;
@@ -449,37 +454,96 @@ class Player {
                 }
             }
 
-            vars.sort((a, b) -> Integer.compare(dist(a.getFirst().getPoint(), a.getSecond().getPoint()),
-                    dist(b.getFirst().getPoint(), b.getSecond().getPoint())));
+            Function<Pair<Buster, Gost>, Integer> costFunction = (Pair<Buster, Gost> p) -> {
+                Buster buster = p.getFirst();
+                Gost gost = p.getSecond();
+                return gost.getStamina() + turnsToPrepare(buster, gost);
+            };
+
+            vars.sort((a, b) -> Integer.compare(costFunction.apply(a),
+                    costFunction.apply(b)));
 
             Set<Integer> pickedGosts = new HashSet<>();
             Set<Integer> pickedBusters = new HashSet<>();
+            List<MutablePair<Gost, Integer>> alreadyPickedGosts = new ArrayList<>();
 
+            OUTER_LOOP:
             for (Pair<Buster, Gost> var : vars) {
                 if (pickedBusters.contains(var.getFirst().getId()) || pickedGosts.contains(var.getSecond().getId())) {
-                    continue;
+                    continue OUTER_LOOP;
                 } else {
                     Buster buster = var.getFirst();
                     Gost gost = var.getSecond();
+                    if (gost.getStamina() > BIG_CATH_TRESHOLD) {
+                        for (MutablePair<Gost, Integer> alreadyPicked : alreadyPickedGosts) {
+                            Gost pickedGost = alreadyPicked.getFirst();
+                            int alreadCatchedBy = alreadyPicked.getSecond();
+                            int willReduceSteps =
+                                    (pickedGost.getStamina() - alreadCatchedBy * turnsToPrepare(buster, pickedGost)) /
+                                            (alreadCatchedBy + 1);
+                            if (willReduceSteps >= STEPS_TO_REDUCE_TRESHOLD) {
+                                pickedBusters.add(buster.getId());
+                                alreadyPicked.setSecond(alreadCatchedBy + 1);
+                                Optional<PrepareToCatchGost> prep = goForGost(buster, pickedGost);
+                                if (prep.isPresent()) {
+                                    strategies.add(prep.get());
+                                }
+                                continue OUTER_LOOP;
+                            }
+                        }
+                    }
+
                     pickedBusters.add(buster.getId());
                     pickedGosts.add(gost.getId());
-                    int distance = dist(buster.point, gost.escapingTo());
-                    Point toward;
-                    if (distance > sqr(TRAP_RANGE_OUTER)) {
-                        toward = moveToward(buster.point,
-                                gost.escapingTo(),
-                                Math.sqrt(distance) - TRAP_RANGE_OUTER,
-                                true);
-                    } else if (distance < sqr(TRAP_RANGE_INNER)) {
-                        toward =
-                                moveAway(buster.point, gost.escapingTo(), TRAP_RANGE_INNER - Math.sqrt(distance), true);
-                    } else {
-                        continue;
+
+                    Optional<PrepareToCatchGost> prep = goForGost(buster, gost);
+                    if (prep.isPresent()) {
+                        strategies.add(prep.get());
                     }
-                    strategies.add(new PrepareToCatchGost(buster, gost, MoveBusterAction.create(buster, toward)));
+
+                    alreadyPickedGosts.add(MutablePair.create(gost, 1));
                 }
             }
             return strategies;
+        }
+
+        private static Optional<PrepareToCatchGost> goForGost(Buster buster, Gost gost) {
+            // Means we should do catch instead of prepare
+            if (turnsToPrepare(buster, gost) == 0) {
+                return Optional.empty();
+            }
+            int distance = dist(buster.point, gost.escapingTo());
+            Point toward = null;
+            if (distance > sqr(TRAP_RANGE_OUTER)) {
+                toward = moveToward(buster.point,
+                        gost.escapingTo(),
+                        Math.sqrt(distance) - TRAP_RANGE_OUTER,
+                        true);
+            } else if (distance < sqr(TRAP_RANGE_INNER)) {
+                toward =
+                        moveAway(buster.point, gost.escapingTo(), TRAP_RANGE_INNER - Math.sqrt(distance), true);
+            } else {
+                // Gost already moves towards us
+                toward = buster.getPoint();
+            }
+            return Optional.of(new PrepareToCatchGost(buster, gost, MoveBusterAction.create(buster, toward)));
+        }
+
+        private static int turnsToPrepare(Buster buster, Gost gost) {
+            int prepateTurns = 0;
+            int momentDist = dist(buster.point, gost.getPoint());
+
+            if (momentDist <= sqr(TRAP_RANGE_OUTER) && momentDist >= sqr(TRAP_RANGE_INNER)) {
+                prepateTurns = 0;
+            } else {
+                int distance = dist(buster.point, gost.escapingTo());
+                if (distance > sqr(TRAP_RANGE_OUTER)) {
+                    prepateTurns = (int) Math.ceil((Math.sqrt(distance) - TRAP_RANGE_OUTER) / BUSTER_SPEED);
+                } else if (distance < sqr(TRAP_RANGE_INNER)) {
+                    prepateTurns = (int) Math.ceil((TRAP_RANGE_INNER - Math.sqrt(distance)) / BUSTER_SPEED);
+                }
+            }
+            return prepateTurns;
         }
 
         public PrepareToCatchGost(Buster buster, Gost goingForGost, MoveBusterAction action) {
@@ -1283,6 +1347,31 @@ class Player {
 
         public V getSecond() {
             return second;
+        }
+    }
+
+    static final class MutablePair<K, V> {
+        private final K first;
+        private V second;
+        public static <K, V> MutablePair<K, V> create(K first, V second) {
+            return new MutablePair<K, V>(first, second);
+        }
+
+        private MutablePair(K first, V second) {
+            this.first = first;
+            this.second = second;
+        }
+
+        public K getFirst() {
+            return first;
+        }
+
+        public V getSecond() {
+            return second;
+        }
+
+        public void setSecond(V second) {
+            this.second = second;
         }
     }
 }
