@@ -83,6 +83,12 @@ class Player {
         strategies.addAll(BringGostToBase.create(leftForStrategy(gameState.getMyBusters(),
                 strategies,
                 BringGostToBase.class)));
+        strategies.addAll(PrepareToCompeteForGost.create(leftForStrategy(gameState.getMyBusters(),
+                strategies,
+                PrepareToCompeteForGost.class)));
+        strategies.addAll(CompeteForGost.create(leftForStrategy(gameState.getMyBusters(),
+                strategies,
+                CompeteForGost.class)));
         strategies.addAll(Scout.create(leftForStrategy(gameState.getMyBusters(), strategies, Scout.class)));
         strategies.addAll(PrepareToCatchGost.create(leftForStrategy(gameState.getMyBusters(),
                 strategies,
@@ -130,14 +136,18 @@ class Player {
             return 0;
         } else if (Objects.equals(s, BringGostToBase.class)) {
             return 1;
-        } else if (Objects.equals(s, Scout.class)) {
+        } else if (Objects.equals(s, PrepareToCompeteForGost.class)) {
             return 2;
-        } else if (Objects.equals(s, PrepareToCatchGost.class)) {
+        } else if (Objects.equals(s, CompeteForGost.class)) {
             return 3;
-        } else if (Objects.equals(s, CatchGost.class)) {
+        } else if (Objects.equals(s, Scout.class)) {
             return 4;
-        } else if (Objects.equals(s, SearchForGost.class)) {
+        } else if (Objects.equals(s, PrepareToCatchGost.class)) {
             return 5;
+        } else if (Objects.equals(s, CatchGost.class)) {
+            return 6;
+        } else if (Objects.equals(s, SearchForGost.class)) {
+            return 7;
         } else if (Objects.equals(s, WaitStunExpires.class)) {
             return -100;
         } else if (Objects.equals(s, StunEnemy.class)) {
@@ -402,8 +412,8 @@ class Player {
                     continue;
                 }
                 Optional<Gost> gostOpt = gameState.visibleGosts.stream()
-                        .filter(g -> dist(g.getPoint(), buster.getPoint()) <= sqr(TRAP_RANGE_OUTER) &&
-                                dist(g.getPoint(), buster.getPoint()) >= sqr(TRAP_RANGE_INNER))
+                        .filter(g -> !g.isBeingTrappedByEnemy())
+                        .filter(g -> canBust(buster, g))
                         .sorted((a, b) -> Integer.compare(a.getStamina(), b.getStamina()))
                         .findFirst();
                 if (!gostOpt.isPresent()) {
@@ -412,6 +422,11 @@ class Player {
                 strategies.add(new CatchGost(buster, gostOpt.get(), new BustBusterAction(buster, gostOpt.get())));
             }
             return strategies;
+        }
+
+        public static boolean canBust(Buster b, Gost g) {
+            return dist(g.getPoint(), b.getPoint()) <= sqr(TRAP_RANGE_OUTER) &&
+                    dist(g.getPoint(), b.getPoint()) >= sqr(TRAP_RANGE_INNER);
         }
 
         private CatchGost(Buster buster, Gost gost, BustBusterAction action) {
@@ -454,6 +469,9 @@ class Player {
             List<Pair<Buster, Gost>> vars = new ArrayList<>();
             for (Buster buster : busters) {
                 for (Gost gost : gameState.getEstimatedGosts()) {
+                    if (gost.isBeingTrappedByEnemy()) {
+                        continue;
+                    }
                     vars.add(Pair.create(buster, gost));
                 }
             }
@@ -511,29 +529,37 @@ class Player {
             return strategies;
         }
 
-        private static Optional<PrepareToCatchGost> goForGost(Buster buster, Gost gost) {
+        static Optional<PrepareToCatchGost> goForGost(Buster buster, Gost gost) {
+            Optional<Point> toward = goForGostPoint(buster, gost);
+            if (!toward.isPresent()) {
+                return Optional.empty();
+            }
+            return Optional.of(new PrepareToCatchGost(buster, gost, MoveBusterAction.create(buster, toward.get())));
+        }
+
+        static Optional<Point> goForGostPoint(Buster buster, Gost gost) {
             // Means we should do catch instead of prepare
             if (turnsToPrepare(buster, gost) == 0) {
                 return Optional.empty();
             }
             int distance = dist(buster.point, gost.escapingTo());
-            Point toward = null;
             if (distance > sqr(TRAP_RANGE_OUTER)) {
-                toward = moveToward(buster.point,
+                return Optional.of(moveToward(buster.point,
                         gost.escapingTo(),
                         Math.sqrt(distance) - TRAP_RANGE_OUTER,
-                        true);
+                        true));
             } else if (distance < sqr(TRAP_RANGE_INNER)) {
-                toward =
-                        moveAway(buster.point, gost.escapingTo(), TRAP_RANGE_INNER - Math.sqrt(distance), true);
+                return Optional.of(moveAway(buster.point,
+                        gost.escapingTo(),
+                        TRAP_RANGE_INNER - Math.sqrt(distance),
+                        true));
             } else {
                 // Gost already moves towards us
-                toward = buster.getPoint();
+                return Optional.of(buster.getPoint());
             }
-            return Optional.of(new PrepareToCatchGost(buster, gost, MoveBusterAction.create(buster, toward)));
         }
 
-        private static int turnsToPrepare(Buster buster, Gost gost) {
+        static int turnsToPrepare(Buster buster, Gost gost) {
             int prepateTurns = 0;
             int momentDist = dist(buster.point, gost.getPoint());
 
@@ -691,6 +717,149 @@ class Player {
             final StringBuilder sb = new StringBuilder("Scout{");
             sb.append("action=").append(action);
             sb.append(", buster=").append(buster);
+            sb.append('}');
+            return sb.toString();
+        }
+    }
+
+    private static class PrepareToCompeteForGost implements Strategy {
+
+        private final Buster buster;
+        private final MoveBusterAction action;
+        private final Gost gost;
+
+        public static List<PrepareToCompeteForGost> create(List<Buster> busters) {
+            List<PrepareToCompeteForGost> strategies = new ArrayList<>();
+            for (Gost gost : gameState.visibleGosts) {
+                if (!gost.isBeingTrappedByEnemy()) {
+                    continue;
+                }
+                int leftStamina = gost.getStamina();
+                int enemiesInvolved = gost.enemyTrapAttempts();
+                int lifeExpectancy = (leftStamina + enemiesInvolved - 1) / enemiesInvolved;
+                int howMuchCanCompete = 0;
+                for (Buster buster : busters) {
+                    if (lifeExpectancy >= PrepareToCatchGost.turnsToPrepare(buster, gost)) {
+                        howMuchCanCompete++;
+                    }
+                }
+                if (howMuchCanCompete >= enemiesInvolved) {
+                    int gathered = 0;
+                    for (Buster buster : busters) {
+                        if (gathered > enemiesInvolved) {
+                            break;
+                        }
+                        int turnsToPrepare = PrepareToCatchGost.turnsToPrepare(buster, gost);
+                        if (lifeExpectancy < turnsToPrepare) {
+                            continue;
+                        }
+                        gathered++;
+                        if (turnsToPrepare == 0) {
+                            continue;
+                        }
+                        //noinspection OptionalGetWithoutIsPresent
+                        strategies.add(new PrepareToCompeteForGost(buster,
+                                MoveBusterAction.create(buster, PrepareToCatchGost.goForGostPoint(buster, gost).get()),
+                                gost));
+                    }
+                    break;
+                }
+            }
+
+            return strategies;
+        }
+
+        public PrepareToCompeteForGost(Buster buster, MoveBusterAction action, Gost gost) {
+            this.buster = buster;
+            this.action = action;
+            this.gost = gost;
+        }
+
+        @Override
+        public BusterAction busterAction() {
+            return action;
+        }
+
+        @Override
+        public Buster getBuster() {
+            return buster;
+        }
+
+        @Override
+        public String toString() {
+            final StringBuilder sb = new StringBuilder("PrepareToCompeteForGost{");
+            sb.append("buster=").append(buster);
+            sb.append(", action=").append(action);
+            sb.append(", gost=").append(gost);
+            sb.append('}');
+            return sb.toString();
+        }
+    }
+
+    private static class CompeteForGost implements Strategy {
+        public static final int LIFE_EXPECTANCY_TO_START_TIE = 2;
+        private final Buster buster;
+        private final BusterAction action;
+
+        public static List<CompeteForGost> create(List<Buster> busters) {
+            List<CompeteForGost> strategies = new ArrayList<>();
+            for (Gost gost : gameState.visibleGosts) {
+                if (!gost.isBeingTrappedByEnemy()) {
+                    continue;
+                }
+                int leftStamina = gost.getStamina();
+                int enemiesInvolved = gost.enemyTrapAttempts();
+                int lifeExpectancy = (leftStamina + enemiesInvolved - 1) / enemiesInvolved;
+                int howMuchCanCompete = 0;
+
+                for (Buster buster : busters) {
+                    if (CatchGost.canBust(buster, gost)) {
+                        howMuchCanCompete++;
+                    }
+                }
+                boolean worthTying =
+                        howMuchCanCompete == enemiesInvolved && LIFE_EXPECTANCY_TO_START_TIE >= lifeExpectancy;
+                boolean haveAdvantage = howMuchCanCompete > enemiesInvolved;
+
+                if (worthTying || haveAdvantage) {
+                    for (Buster buster : busters) {
+                        if (CatchGost.canBust(buster, gost)) {
+                            strategies.add(new CompeteForGost(buster, BustBusterAction.create(buster, gost)));
+                        }
+                    }
+                    break;
+                }
+
+                for (Buster buster : busters) {
+                    if (CatchGost.canBust(buster, gost)) {
+                        strategies.add(new CompeteForGost(buster, MoveBusterAction.create(buster, buster.getPoint())));
+                    }
+                }
+
+            }
+            return strategies;
+        }
+
+        public CompeteForGost(Buster buster, BusterAction action) {
+            this.buster = buster;
+            this.action = action;
+        }
+
+        @Override
+        public BusterAction busterAction() {
+            return action;
+        }
+
+        @Override
+        public Buster getBuster() {
+            return buster;
+        }
+
+        @Override
+        public String toString() {
+            final StringBuilder sb = new StringBuilder("CompeteForGost{");
+            sb.append("buster=").append(buster);
+            sb.append(", action=").append(action);
             sb.append('}');
             return sb.toString();
         }
@@ -1248,6 +1417,23 @@ class Player {
             int meanY = y / count;
 
             return moveAway(point, Point.create(meanX, meanY), GOST_SPEED, false);
+        }
+
+        public int enemyTrapAttempts() {
+            int myCatchTries = 0;
+            for (Strategy strat : gameState.getPrevTurnStrats()) {
+                if (strat.busterAction() instanceof BustBusterAction) {
+                    BustBusterAction action = (BustBusterAction) strat.busterAction();
+                    if (action.getGost().getId() == getId()) {
+                        myCatchTries++;
+                    }
+                }
+            }
+            return getTrapAttempts() - myCatchTries;
+        }
+
+        public boolean isBeingTrappedByEnemy() {
+            return enemyTrapAttempts() > 0;
         }
 
         public int getId() {
