@@ -767,6 +767,7 @@ class Player {
                         howMuchCanCompete++;
                     }
                 }
+                Set<Integer> involvedBusters = new HashSet<>();
                 if (howMuchCanCompete >= enemiesInvolved) {
                     int gathered = 0;
                     for (Buster buster : busters) {
@@ -785,8 +786,23 @@ class Player {
                         strategies.add(new PrepareToCompeteForGost(buster,
                                 MoveBusterAction.create(buster, PrepareToCatchGost.goForGostPoint(buster, gost).get()),
                                 gost));
+                        involvedBusters.add(buster.getId());
                     }
-                    break;
+                }
+                if (howMuchCanCompete == enemiesInvolved) {
+                    Optional<Buster> tieResolver = busters.stream()
+                            .filter(x -> !involvedBusters.contains(x.getId()))
+                            .sorted((a, b) -> Integer.compare(dist(a.getPoint(), gost.getPoint()),
+                                    dist(b.getPoint(), gost.getPoint()))).findFirst();
+                    if (tieResolver.isPresent()) {
+                        Optional<Point> goTo = PrepareToCatchGost.goForGostPoint(tieResolver.get(), gost);
+                        if (goTo.isPresent()) {
+                            strategies.add(new PrepareToCompeteForGost(tieResolver.get(),
+                                    MoveBusterAction.create(tieResolver.get(), goTo.get()),
+                                    gost));
+                            involvedBusters.add(tieResolver.get().getId());
+                        }
+                    }
                 }
             }
 
