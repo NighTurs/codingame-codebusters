@@ -246,7 +246,7 @@ class Player {
     }
 
     private static class StunEnemy implements Strategy {
-        private static final int STUN_AGAIN_REMAINED_THRESHOLD = 2;
+        private static final int STUN_AGAIN_REMAINED_THRESHOLD = 1;
         private final Buster buster;
         private final StunBusterAction action;
 
