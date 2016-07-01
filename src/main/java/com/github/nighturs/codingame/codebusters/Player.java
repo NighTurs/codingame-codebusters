@@ -58,6 +58,7 @@ class Player {
                                     0 :
                                     Math.max(0, STUN_COOLDOWN - (gameState.getTurn() + 1 - lastTurnUsedStun)),
                             state == 3,
+                            state == 3 ? value : -1,
                             gameState.getTurn() + 1);
                     if (entityType == gameState.getMyTeamId()) {
                         myBusters.add(buster);
@@ -1509,6 +1510,7 @@ class Player {
         private final int untilStunExpires;
         private final int untilStunIsReady;
         private final boolean isTryingToTrap;
+        private final int trappingGost;
         private final int stateTurn;
 
         public static Buster create(int id,
@@ -1519,6 +1521,7 @@ class Player {
                                     int untilStunExpires,
                                     int untilStunIsReady,
                                     boolean isTryingToTrap,
+                                    int trappingGost,
                                     int stateTurn) {
             return new Buster(id,
                     point,
@@ -1528,6 +1531,7 @@ class Player {
                     untilStunExpires,
                     untilStunIsReady,
                     isTryingToTrap,
+                    trappingGost,
                     stateTurn);
         }
 
@@ -1539,6 +1543,7 @@ class Player {
                       int untilStunExpires,
                       int untilStunIsReady,
                       boolean isTryingToTrap,
+                      int trappingGost,
                       int stateTurn) {
             this.id = id;
             this.point = point;
@@ -1548,6 +1553,7 @@ class Player {
             this.untilStunExpires = untilStunExpires;
             this.untilStunIsReady = untilStunIsReady;
             this.isTryingToTrap = isTryingToTrap;
+            this.trappingGost = trappingGost;
             this.stateTurn = stateTurn;
         }
 
@@ -1591,6 +1597,10 @@ class Player {
             return stateTurn;
         }
 
+        public int getTrappingGost() {
+            return trappingGost;
+        }
+
         @Override
         public String toString() {
             final StringBuilder sb = new StringBuilder("Buster{");
@@ -1602,6 +1612,7 @@ class Player {
             sb.append(", untilStunExpires=").append(untilStunExpires);
             sb.append(", untilStunIsReady=").append(untilStunIsReady);
             sb.append(", isTryingToTrap=").append(isTryingToTrap);
+            sb.append(", trappingGost=").append(trappingGost);
             sb.append(", stateTurn=").append(stateTurn);
             sb.append('}');
             return sb.toString();
