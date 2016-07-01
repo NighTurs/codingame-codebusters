@@ -1627,23 +1627,39 @@ class Player {
         }
 
         public Point escapingTo() {
+            if (trapAttempts > 0) {
+                return point;
+            }
             int x = 0, y = 0;
             int count = 0;
+            int minDist = Integer.MAX_VALUE;
             for (Buster buster : gameState.enemyBusters) {
-                if (dist(buster.getPoint(), point) <= sqr(FOG_UNIT)) {
+                int d = dist(buster.getPoint(), point);
+                if (d < minDist) {
+                    minDist = d;
+                    x = buster.point.getX();
+                    y = buster.point.getY();
+                    count = 1;
+                } else if (d == minDist) {
                     x += buster.point.getX();
                     y += buster.point.getY();
                     count++;
                 }
             }
             for (Buster buster : gameState.myBusters) {
-                if (dist(buster.getPoint(), point) <= sqr(FOG_UNIT)) {
+                int d = dist(buster.getPoint(), point);
+                if (d < minDist) {
+                    minDist = d;
+                    x = buster.point.getX();
+                    y = buster.point.getY();
+                    count = 1;
+                } else if (d == minDist) {
                     x += buster.point.getX();
                     y += buster.point.getY();
                     count++;
                 }
             }
-            if (count == 0) {
+            if (count == 0 || minDist > sqr(FOG_UNIT)) {
                 return point;
             }
 
