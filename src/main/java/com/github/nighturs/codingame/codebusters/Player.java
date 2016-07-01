@@ -247,20 +247,57 @@ class Player {
 
     private static class StunEnemy implements Strategy {
         private static final int STUN_AGAIN_REMAINED_THRESHOLD = 1;
+        private static final int ENEMY_STUN_COOLDOWN_THRESHOLD = 5;
         private final Buster buster;
         private final StunBusterAction action;
 
         public static List<StunEnemy> create(List<Buster> busters) {
             final List<StunEnemy> strategies = new ArrayList<>();
 
+            final Set<Integer> usedBusters = new HashSet<>();
+            final Set<Integer> usedEnemies = new HashSet<>();
+
+            for (Buster buster : busters) {
+                if (!buster.isCarryingGost()) {
+                    continue;
+                }
+                for (Buster enemy : gameState.getEnemyBusters()) {
+                    boolean threatening = inStunRange(buster, enemy) && enemy.getUntilStunIsReady() < 2;
+                    if ((enemy.isStunned() && STUN_AGAIN_REMAINED_THRESHOLD < enemy.getUntilStunExpires()) &&
+                            !threatening) {
+                        continue;
+                    }
+                    Optional<Buster> saviour = busters.stream()
+                            .filter(x -> !usedBusters.contains(x.getId()))
+                            .filter(x -> !x.isCarryingGost())
+                            .filter(x -> x.getUntilStunIsReady() == 0)
+                            .filter(x -> inStunRange(x.getPoint(), enemy.getPoint())).findFirst();
+                    if (saviour.isPresent()) {
+                        strategies.add(new StunEnemy(saviour.get(),
+                                StunBusterAction.create(saviour.get(), enemy)));
+                        usedBusters.add(saviour.get().getId());
+                        usedEnemies.add(enemy.getId());
+                    } else if (buster.getUntilStunIsReady() == 0) {
+                        strategies.add(new StunEnemy(buster,
+                                StunBusterAction.create(buster, enemy)));
+                        usedEnemies.add(enemy.getId());
+                        break;
+                    }
+                }
+                usedBusters.add(buster.getId());
+            }
+
+            Map<Integer, Buster> enemyBusters =
+                    gameState.getEnemyBusters().stream().collect(Collectors.toMap(Buster::getId, y -> y));
             Map<Integer, List<Buster>> busterByEnemy = new HashMap<>();
 
-            for (Buster enemy : gameState.getEnemyBusters()) {
-                if (enemy.isStunned() && STUN_AGAIN_REMAINED_THRESHOLD < enemy.getUntilStunExpires()) {
+            for (Buster enemy : enemyBusters.values()) {
+                if ((enemy.isStunned() && STUN_AGAIN_REMAINED_THRESHOLD < enemy.getUntilStunExpires()) ||
+                        ENEMY_STUN_COOLDOWN_THRESHOLD < enemy.getUntilStunIsReady()) {
                     continue;
                 }
                 for (Buster buster : busters) {
-                    if (buster.isStunned() || buster.getUntilStunIsReady() > 0) {
+                    if (buster.getUntilStunIsReady() > 0) {
                         continue;
                     }
                     if (inStunRange(buster, enemy)) {
@@ -274,21 +311,29 @@ class Player {
                 }
             }
 
-            final Set<Integer> usedBusters = new HashSet<>();
-
             busterByEnemy.entrySet()
                     .stream()
-                    .sorted((a, b) -> Integer.compare(a.getValue().size(), b.getValue().size()))
+                    .filter(g -> !usedEnemies.contains(g.getKey()))
+                    .sorted((a, b) -> {
+                        Buster enemyA = enemyBusters.get(a.getKey());
+                        Buster enemyB = enemyBusters.get(b.getKey());
+                        int carryingGost = Boolean.compare(!enemyA.isCarryingGost(), !enemyB.isCarryingGost());
+                        if (carryingGost != 0) {
+                            return carryingGost;
+                        }
+                        int stunCooldown = Integer.compare(enemyA.getUntilStunIsReady(), enemyB.getUntilStunIsReady());
+                        if (stunCooldown != 0) {
+                            return stunCooldown;
+                        }
+                        return Integer.compare(a.getValue().size(), b.getValue().size());
+                    })
                     .forEach(kv -> {
                         Optional<Buster> whoCanOpt =
                                 kv.getValue().stream().filter(x -> !usedBusters.contains(x.getId())).findFirst();
                         if (whoCanOpt.isPresent()) {
                             Buster whoCan = whoCanOpt.get();
                             strategies.add(new StunEnemy(whoCan,
-                                    StunBusterAction.create(whoCan, gameState.getEnemyBusters()
-                                            .stream()
-                                            .filter(e -> e.getId() == kv.getKey())
-                                            .findAny().get())));
+                                    StunBusterAction.create(whoCan, enemyBusters.get(kv.getKey()))));
                             usedBusters.add(whoCan.getId());
                         }
                     });
