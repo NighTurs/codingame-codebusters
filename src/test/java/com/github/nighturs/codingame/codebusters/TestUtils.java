@@ -10,7 +10,7 @@ class TestUtils {
     }
 
     static Player.Buster b(int x, int y) {
-        return Player.Buster.create(0, p(x, y), false, 0, false, 0, 0, false);
+        return Player.Buster.create(0, p(x, y), false, 0, false, 0, 0, false, 0);
     }
 
     static Player.Gost g(int x, int y) {
