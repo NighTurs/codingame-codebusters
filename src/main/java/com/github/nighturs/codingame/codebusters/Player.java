@@ -759,7 +759,7 @@ class Player {
                     continue;
                 }
                 int leftStamina = gost.getStamina();
-                int enemiesInvolved = gost.enemyTrapAttempts();
+                int enemiesInvolved = gost.enemyTrappersNextTurn();
                 int lifeExpectancy = (leftStamina + enemiesInvolved - 1) / enemiesInvolved;
                 int howMuchCanCompete = 0;
                 for (Buster buster : busters) {
@@ -832,7 +832,7 @@ class Player {
                     continue;
                 }
                 int leftStamina = gost.getStamina();
-                int enemiesInvolved = gost.enemyTrapAttempts();
+                int enemiesInvolved = gost.enemyTrappersNextTurn();
                 int lifeExpectancy = (leftStamina + enemiesInvolved - 1) / enemiesInvolved;
                 int howMuchCanCompete = 0;
 
@@ -1680,7 +1680,7 @@ class Player {
             return moveAway(point, Point.create(meanX, meanY), GOST_SPEED, false);
         }
 
-        public int enemyTrapAttempts() {
+        public int myCatchTries() {
             int myCatchTries = 0;
             for (Strategy strat : gameState.getPrevTurnStrats()) {
                 if (strat.busterAction() instanceof BustBusterAction) {
@@ -1690,11 +1690,27 @@ class Player {
                     }
                 }
             }
-            return getTrapAttempts() - myCatchTries;
+            return myCatchTries;
+        }
+
+        public int enemyTrappersNextTurn() {
+            int newEnemiesInVicinity = 0;
+            int enemiesStunned = 0;
+            for (Buster enemy : gameState.getEnemyBusters()) {
+                if (!enemy.isTryingToTrap() && !enemy.isCarryingGost() && !enemy.isStunned() &&
+                        CatchGost.canBust(enemy, this)) {
+                    newEnemiesInVicinity++;
+                }
+                if (enemy.isStunned() && enemy.isTryingToTrap() && enemy.getTrappingGost() == this.getId()) {
+                    enemiesStunned++;
+                }
+            }
+
+            return getTrapAttempts() - myCatchTries() + newEnemiesInVicinity - enemiesStunned;
         }
 
         public boolean isBeingTrappedByEnemy() {
-            return enemyTrapAttempts() > 0;
+            return getTrapAttempts() - myCatchTries() > 0;
         }
 
         public int getId() {
