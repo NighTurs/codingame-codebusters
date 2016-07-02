@@ -481,14 +481,14 @@ class Player {
     }
 
     private static class PrepareToCatchGost implements Strategy {
-        private static final int BIG_CATH_TRESHOLD = 4;
-        private static final int STEPS_TO_REDUCE_TRESHOLD = 2;
         private final MoveBusterAction action;
         private final Buster buster;
         private final Gost goingForGost;
 
         public static List<PrepareToCatchGost> create(List<Buster> busters) {
             List<PrepareToCatchGost> strategies = new ArrayList<>();
+            Set<Integer> pickedGosts = new HashSet<>();
+            Set<Integer> pickedBusters = new HashSet<>();
 
             List<Pair<Buster, Gost>> vars = new ArrayList<>();
             for (Buster buster : busters) {
@@ -506,49 +506,56 @@ class Player {
                 return gost.getStamina() + turnsToPrepare(buster, gost);
             };
 
-            vars.sort((a, b) -> Integer.compare(costFunction.apply(a),
-                    costFunction.apply(b)));
+            vars.sort((a, b) -> Integer.compare(costFunction.apply(a), costFunction.apply(b)));
 
-            Set<Integer> pickedGosts = new HashSet<>();
-            Set<Integer> pickedBusters = new HashSet<>();
-            List<MutablePair<Gost, Integer>> alreadyPickedGosts = new ArrayList<>();
-
-            OUTER_LOOP:
             for (Pair<Buster, Gost> var : vars) {
                 if (pickedBusters.contains(var.getFirst().getId()) || pickedGosts.contains(var.getSecond().getId())) {
-                    continue OUTER_LOOP;
-                } else {
-                    Buster buster = var.getFirst();
-                    Gost gost = var.getSecond();
-                    if (gost.getStamina() > BIG_CATH_TRESHOLD) {
-                        for (MutablePair<Gost, Integer> alreadyPicked : alreadyPickedGosts) {
-                            Gost pickedGost = alreadyPicked.getFirst();
-                            int alreadCatchedBy = alreadyPicked.getSecond();
-                            int willReduceSteps =
-                                    (pickedGost.getStamina() - alreadCatchedBy * turnsToPrepare(buster, pickedGost)) /
-                                            (alreadCatchedBy + 1);
-                            if (willReduceSteps >= STEPS_TO_REDUCE_TRESHOLD) {
-                                pickedBusters.add(buster.getId());
-                                alreadyPicked.setSecond(alreadCatchedBy + 1);
-                                Optional<PrepareToCatchGost> prep = goForGost(buster, pickedGost);
-                                if (prep.isPresent()) {
-                                    strategies.add(prep.get());
-                                }
-                                continue OUTER_LOOP;
-                            }
-                        }
-                    }
-
-                    pickedBusters.add(buster.getId());
-                    pickedGosts.add(gost.getId());
-
-                    Optional<PrepareToCatchGost> prep = goForGost(buster, gost);
-                    if (prep.isPresent()) {
-                        strategies.add(prep.get());
-                    }
-
-                    alreadyPickedGosts.add(MutablePair.create(gost, 1));
+                    continue;
                 }
+
+                Buster buster = var.getFirst();
+                Gost gost = var.getSecond();
+
+                pickedBusters.add(buster.getId());
+                pickedGosts.add(gost.getId());
+
+                Optional<PrepareToCatchGost> prep = goForGost(buster, gost);
+                if (prep.isPresent()) {
+                    strategies.add(prep.get());
+                }
+
+                List<Integer> arrivalTurns = new ArrayList<>();
+                arrivalTurns.add(gameState.getTurn() + turnsToPrepare(buster, gost));
+
+                busters.stream()
+                        .filter(x -> !pickedBusters.contains(x.getId()))
+                        .sorted((a, b) -> Integer.compare(turnsToPrepare(a, gost), turnsToPrepare(b, gost)))
+                        .forEach(help -> {
+                            int stamina = gost.getStamina();
+                            int turn = gameState.getTurn();
+                            int curBusterArrival = gameState.getTurn() + turnsToPrepare(help, gost);
+                            int reduced = 0;
+                            while (stamina > 0) {
+                                for (Integer arrival : arrivalTurns) {
+                                    if (arrival <= turn) {
+                                        stamina--;
+                                    }
+                                }
+                                if (curBusterArrival <= turn) {
+                                    stamina--;
+                                    reduced++;
+                                }
+                                turn++;
+                            }
+                            if (reduced >= turnsToPrepare(help, gost)) {
+                                arrivalTurns.add(curBusterArrival);
+                                Optional<PrepareToCatchGost> helpPrep = goForGost(help, gost);
+                                if (helpPrep.isPresent()) {
+                                    strategies.add(helpPrep.get());
+                                }
+                                pickedBusters.add(help.getId());
+                            }
+                        });
             }
             return strategies;
         }
