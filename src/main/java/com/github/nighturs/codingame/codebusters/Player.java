@@ -88,6 +88,7 @@ class Player {
         strategies.addAll(BringGostToBase.create(leftForStrategy(gameState.getMyBusters(),
                 strategies,
                 BringGostToBase.class)));
+        strategies.addAll(Escort.create(leftForStrategy(gameState.getMyBusters(), strategies, Escort.class)));
         strategies.addAll(InterceptEnemyWithGost.create(leftForStrategy(gameState.getMyBusters(),
                 strategies,
                 InterceptEnemyWithGost.class)));
@@ -146,22 +147,24 @@ class Player {
             return 0;
         } else if (Objects.equals(s, BringGostToBase.class)) {
             return 1;
-        } else if (Objects.equals(s, InterceptEnemyWithGost.class)) {
+        } else if (Objects.equals(s, Escort.class)) {
             return 2;
-        } else if (Objects.equals(s, PrepareToCatchGostAfterStun.class)) {
+        } else if (Objects.equals(s, InterceptEnemyWithGost.class)) {
             return 3;
-        } else if (Objects.equals(s, PrepareToCompeteForGost.class)) {
+        } else if (Objects.equals(s, PrepareToCatchGostAfterStun.class)) {
             return 4;
-        } else if (Objects.equals(s, CompeteForGost.class)) {
+        } else if (Objects.equals(s, PrepareToCompeteForGost.class)) {
             return 5;
-        } else if (Objects.equals(s, Scout.class)) {
+        } else if (Objects.equals(s, CompeteForGost.class)) {
             return 6;
-        } else if (Objects.equals(s, PrepareToCatchGost.class)) {
+        } else if (Objects.equals(s, Scout.class)) {
             return 7;
-        } else if (Objects.equals(s, CatchGost.class)) {
+        } else if (Objects.equals(s, PrepareToCatchGost.class)) {
             return 8;
-        } else if (Objects.equals(s, SearchForGost.class)) {
+        } else if (Objects.equals(s, CatchGost.class)) {
             return 9;
+        } else if (Objects.equals(s, SearchForGost.class)) {
+            return 10;
         } else if (Objects.equals(s, WaitStunExpires.class)) {
             return -100;
         } else if (Objects.equals(s, StunEnemy.class)) {
@@ -1198,7 +1201,7 @@ class Player {
             return distToBase <= sqr(BASE_RANGE);
         }
 
-        private static Point moveToButKeepInBustRange(Buster buster, PointBase p) {
+        public static Point moveToButKeepInBustRange(Buster buster, PointBase p) {
             int dist = dist(buster.getPoint(), p);
             if (dist >= sqr(TRAP_RANGE_INNER + BUSTER_SPEED)) {
                 return moveToward(buster.getPoint(), p, BUSTER_SPEED, true);
@@ -1235,6 +1238,109 @@ class Player {
             return sb.toString();
         }
 
+    }
+
+    private static final class Escort implements Strategy {
+
+        private final Buster buster;
+        private final MoveBusterAction action;
+        private final Buster valuableBuster;
+
+        public static List<Escort> create(List<Buster> busters) {
+            List<Escort> strategies = new ArrayList<>();
+            for (Buster buster : gameState.getMyBusters()) {
+                if (!buster.isCarryingGost()) {
+                    continue;
+                }
+                List<PointInTime> pathToBase = estimatePathToBase(buster);
+                // can score certainly
+                if (pathToBase.size() < 2) {
+                    continue;
+                }
+                int lastTurnToIntercept = pathToBase.get(pathToBase.size() - 2).getTurn();
+                double distToBase = Math.sqrt(dist(buster.getPoint(), gameState.getMyBasePoint()));
+                int canIntercept = 0;
+                int canFollow = 0;
+                for (Buster enemy : gameState.getEnemyBusters()) {
+                    if ((enemy.isStunned() && enemy.getUntilStunExpires() > 1) || enemy.isCarryingGost()) {
+                        continue;
+                    }
+                    boolean canReach = StunEnemy.inStunRange(enemy, buster) ||
+                            distToBase > Math.sqrt(dist(enemy.getPoint(), gameState.getMyBasePoint()) + BUSTER_SPEED);
+                    if (!canReach) {
+                        continue;
+                    }
+                    canFollow++;
+                    if (enemy.willHaveStunReady(lastTurnToIntercept)) {
+                        canIntercept++;
+                    }
+                }
+                if (canIntercept == 0) {
+                    continue;
+                }
+                int gatheredEscort = 0;
+                for (Buster escort : busters.stream()
+                        .filter(x -> !x.isCarryingGost())
+                        .sorted((a, b) -> Integer.compare(dist(a.getPoint(), buster.getPoint()),
+                                dist(b.getPoint(), buster.getPoint())))
+                        .collect(Collectors.toList())) {
+                    if (gatheredEscort >= canFollow) {
+                        continue;
+                    }
+                    gatheredEscort++;
+                    Point toward = InterceptEnemyWithGost.moveToButKeepInBustRange(escort, pathToBase.get(0));
+                    strategies.add(new Escort(escort, MoveBusterAction.create(escort, toward), buster));
+                }
+            }
+            return strategies;
+        }
+
+        private static List<PointInTime> estimatePathToBase(Buster buster) {
+            List<PointInTime> path = new ArrayList<>();
+            PointInTime curPoint =
+                    PointInTime.create(buster.getPoint().getX(), buster.getPoint().getY(), buster.getStateTurn());
+            while (!canBusterScoreFromPoint(curPoint)) {
+                int distToBase = dist(curPoint, gameState.getMyBasePoint());
+                Point point = moveToward(curPoint,
+                        gameState.getMyBasePoint(),
+                        Math.min(Math.sqrt(distToBase) - BASE_RANGE, BUSTER_SPEED),
+                        true);
+                curPoint = PointInTime.create(point.getX(), point.getY(), curPoint.getTurn() + 1);
+                path.add(curPoint);
+            }
+            return path;
+        }
+
+        private static boolean canBusterScoreFromPoint(PointBase point) {
+            int distToBase = dist(point, gameState.getMyBasePoint());
+            return distToBase <= sqr(BASE_RANGE);
+        }
+
+        private Escort(Buster buster, MoveBusterAction action, Buster valuableBuster) {
+            this.buster = buster;
+            this.action = action;
+            this.valuableBuster = valuableBuster;
+        }
+
+        @Override
+        public BusterAction busterAction() {
+            return action;
+        }
+
+        @Override
+        public Buster getBuster() {
+            return buster;
+        }
+
+        @Override
+        public String toString() {
+            final StringBuilder sb = new StringBuilder("Escort{");
+            sb.append("buster=").append(buster);
+            sb.append(", action=").append(action);
+            sb.append(", valuableBuster=").append(valuableBuster);
+            sb.append('}');
+            return sb.toString();
+        }
     }
 
     private interface Strategy {
