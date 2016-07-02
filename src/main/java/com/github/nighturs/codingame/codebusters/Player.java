@@ -1286,7 +1286,6 @@ class Player {
             grid.updateVisits(myBusters);
             detectStunUsageForEnemies();
             updateLastSeenEnemies();
-            System.err.println(estimatedGosts);
         }
 
         public void updateWithRealGostPositions() {
