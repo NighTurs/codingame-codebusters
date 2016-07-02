@@ -270,6 +270,11 @@ class Player {
                 if (!buster.isCarryingGost()) {
                     continue;
                 }
+                usedBusters.add(buster.getId());
+
+                if (Math.sqrt(dist(buster.getPoint(), gameState.getMyBasePoint())) - BUSTER_SPEED < BASE_RANGE) {
+                    continue;
+                }
                 for (Buster enemy : gameState.getEnemyBusters()) {
                     boolean threatening =  enemy.getUntilStunIsReady() < 2;
                     if (!inStunRange(buster, enemy) ||
@@ -294,7 +299,6 @@ class Player {
                         break;
                     }
                 }
-                usedBusters.add(buster.getId());
             }
 
             Map<Integer, Buster> enemyBusters =
