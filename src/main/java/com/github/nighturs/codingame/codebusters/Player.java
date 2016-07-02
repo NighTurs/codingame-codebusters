@@ -297,7 +297,7 @@ class Player {
 
             for (Buster enemy : enemyBusters.values()) {
                 if ((enemy.isStunned() && STUN_AGAIN_REMAINED_THRESHOLD < enemy.getUntilStunExpires()) ||
-                        ENEMY_STUN_COOLDOWN_THRESHOLD < enemy.getUntilStunIsReady()) {
+                        (ENEMY_STUN_COOLDOWN_THRESHOLD < enemy.getUntilStunIsReady()) && !enemy.isCarryingGost()) {
                     continue;
                 }
                 for (Buster buster : busters) {
