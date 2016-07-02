@@ -224,6 +224,15 @@ class Player {
         return moveInLine(from, to, d, -1, ensureDistance);
     }
 
+    static Point moveAwayBuster(PointBase from, PointBase to, double d, boolean ensureDistance) {
+        if (from.getX() == to.getX() && from.getY() == to.getY()) {
+            // otherwise busters will stay still like gosts after release
+            return moveAway(from, cap(to.getX() + 1, to.getY() + 1), d, ensureDistance);
+        } else {
+            return moveAway(from, to, d, ensureDistance);
+        }
+    }
+
     private static class WaitStunExpires implements Strategy {
         private final Buster buster;
         private final MoveBusterAction action;
@@ -639,7 +648,7 @@ class Player {
                         Math.sqrt(distance) - TRAP_RANGE_OUTER,
                         true));
             } else if (distance < sqr(TRAP_RANGE_INNER)) {
-                return Optional.of(moveAway(buster.point,
+                return Optional.of(moveAwayBuster(buster.point,
                         gost.escapingTo(),
                         TRAP_RANGE_INNER - Math.sqrt(distance),
                         true));
@@ -661,6 +670,9 @@ class Player {
                     prepateTurns = (int) Math.ceil((Math.sqrt(distance) - TRAP_RANGE_OUTER) / BUSTER_SPEED);
                 } else if (distance < sqr(TRAP_RANGE_INNER)) {
                     prepateTurns = (int) Math.ceil((TRAP_RANGE_INNER - Math.sqrt(distance)) / BUSTER_SPEED);
+                } else {
+                    //should just wait one turn then
+                    prepateTurns = 1;
                 }
             }
             return prepateTurns;
@@ -1191,7 +1203,7 @@ class Player {
             if (dist >= sqr(TRAP_RANGE_INNER + BUSTER_SPEED)) {
                 return moveToward(buster.getPoint(), p, BUSTER_SPEED, true);
             } else if (dist < sqr(TRAP_RANGE_INNER)) {
-                return moveAway(buster.getPoint(), p, TRAP_RANGE_INNER - Math.sqrt(dist), true);
+                return moveAwayBuster(buster.getPoint(), p, TRAP_RANGE_INNER - Math.sqrt(dist), true);
             } else {
                 return moveToward(buster.getPoint(), p, Math.sqrt(dist) - TRAP_RANGE_INNER, true);
             }
@@ -1274,6 +1286,7 @@ class Player {
             grid.updateVisits(myBusters);
             detectStunUsageForEnemies();
             updateLastSeenEnemies();
+            System.err.println(estimatedGosts);
         }
 
         public void updateWithRealGostPositions() {
