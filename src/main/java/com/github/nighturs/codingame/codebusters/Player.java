@@ -978,7 +978,7 @@ class Player {
                         continue;
                     }
                     for (PointInTime pointInTime : pathToBase) {
-                        if (buster.willHaveStunReady(pointInTime.getTurn() + 1) &&
+                        if (buster.willHaveStunReady(pointInTime.getTurn() - 1) &&
                                 pointInTime.getTurn() < earliestIntercept && canReachPointInTime(buster, pointInTime)) {
                             earliestIntercept = pointInTime.getTurn();
                             interceptBuster = buster;
