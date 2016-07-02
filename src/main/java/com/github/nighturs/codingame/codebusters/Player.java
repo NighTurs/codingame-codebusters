@@ -262,8 +262,9 @@ class Player {
                     continue;
                 }
                 for (Buster enemy : gameState.getEnemyBusters()) {
-                    boolean threatening = inStunRange(buster, enemy) && enemy.getUntilStunIsReady() < 2;
-                    if ((enemy.isStunned() && STUN_AGAIN_REMAINED_THRESHOLD < enemy.getUntilStunExpires()) &&
+                    boolean threatening =  enemy.getUntilStunIsReady() < 2;
+                    if (!inStunRange(buster, enemy) ||
+                            (enemy.isStunned() && STUN_AGAIN_REMAINED_THRESHOLD < enemy.getUntilStunExpires()) ||
                             !threatening) {
                         continue;
                     }
