@@ -779,6 +779,7 @@ class Player {
                             continue;
                         }
                         gathered++;
+                        involvedBusters.add(buster.getId());
                         if (turnsToPrepare == 0) {
                             continue;
                         }
@@ -786,7 +787,6 @@ class Player {
                         strategies.add(new PrepareToCompeteForGost(buster,
                                 MoveBusterAction.create(buster, PrepareToCatchGost.goForGostPoint(buster, gost).get()),
                                 gost));
-                        involvedBusters.add(buster.getId());
                     }
                 }
                 if (howMuchCanCompete == enemiesInvolved) {
