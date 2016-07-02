@@ -1063,7 +1063,10 @@ class Player {
                 }
                 List<PointInTime> pathToBase = estimatePathToBase(enemy);
                 pathToBase.remove(pathToBase.size() - 1);
-                int earliestIntercept = Integer.MAX_VALUE;
+                                int earliestIntercept = Integer.MAX_VALUE;
+                while (!pathToBase.isEmpty() && pathToBase.get(0).getTurn() <= gameState.getTurn()) {
+                    pathToBase.remove(0);
+                }
                 Buster interceptBuster = null;
                 PointInTime meetPoint = null;
                 boolean enemyWillStunToo = false;
