@@ -857,8 +857,7 @@ class Player {
                         howMuchCanCompete++;
                     }
                 }
-                boolean worthTying =
-                        howMuchCanCompete == enemiesInvolved && LIFE_EXPECTANCY_TO_START_TIE >= lifeExpectancy;
+                boolean worthTying = LIFE_EXPECTANCY_TO_START_TIE >= lifeExpectancy;
                 boolean haveAdvantage = howMuchCanCompete > enemiesInvolved;
 
                 if (worthTying || haveAdvantage) {
