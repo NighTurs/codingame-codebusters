@@ -193,6 +193,9 @@ class Player {
     }
 
     static Point moveInLine(PointBase a, PointBase b, double d, int mod, boolean ensureDistance) {
+        if (a.getX() == b.getX() && a.getY() == b.getY()) {
+            return cap(a.getX(), a.getY());
+        }
         int h = Math.abs(a.getX() - b.getX());
         int w = Math.abs(a.getY() - b.getY());
         int directionX = b.getX() - a.getX() >= 0 ? 1 : -1;
@@ -1882,6 +1885,15 @@ class Player {
 
         public V getSecond() {
             return second;
+        }
+
+        @Override
+        public String toString() {
+            final StringBuilder sb = new StringBuilder("Pair{");
+            sb.append("first=").append(first);
+            sb.append(", second=").append(second);
+            sb.append('}');
+            return sb.toString();
         }
     }
 
