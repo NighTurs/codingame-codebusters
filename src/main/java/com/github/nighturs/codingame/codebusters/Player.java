@@ -3,6 +3,7 @@ package com.github.nighturs.codingame.codebusters;
 import java.util.*;
 import java.util.function.Function;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 @SuppressWarnings({"UtilityClassWithoutPrivateConstructor", "NonFinalUtilityClass"})
 class Player {
@@ -268,7 +269,7 @@ class Player {
 
     private static class StunEnemy implements Strategy {
         private static final int STUN_AGAIN_REMAINED_THRESHOLD = 1;
-        private static final int ENEMY_STUN_COOLDOWN_THRESHOLD = 5;
+        private static final int ENEMY_STUN_COOLDOWN_THRESHOLD = 1;
         private final Buster buster;
         private final StunBusterAction action;
 
@@ -1420,16 +1421,33 @@ class Player {
                 Optional<Buster> prevBuster =
                         prevMyBusters.stream().filter(x -> x.getId() == buster.getId()).findFirst();
                 if (prevBuster.isPresent() && buster.isStunned() && (!prevBuster.get().isStunned() ||
-                        prevBuster.get().getUntilStunExpires() != buster.getUntilStunExpires() - 1)) {
-                    for (Buster enemy : enemyBusters) {
-                        Optional<Buster> prevEnemy =
-                                prevEnemyBusters.stream().filter(x -> x.getId() == enemy.getId()).findFirst();
-                        if (StunEnemy.inStunRange(enemy, buster) && !enemy.isCarryingGost() &&
-                                !enemy.isTryingToTrap() && prevEnemy.isPresent() &&
-                                !prevEnemy.get().isStunned() &&
-                                enemy.getPoint().equals(prevEnemy.get().getPoint())) {
-                            lastTurnUsedStun.put(enemy.getId(), getTurn() - 1);
+                        (prevBuster.get().getUntilStunExpires() != 0 &&
+                                prevBuster.get().getUntilStunExpires() != buster.getUntilStunExpires() + 1))) {
+
+                    List<Buster> enemyCandidates = new ArrayList<>();
+                    for (Buster prevEnemy : prevEnemyBusters) {
+                        Optional<Buster> curEnemy =
+                                enemyBusters.stream().filter(x -> x.getId() == prevEnemy.getId()).findFirst();
+                        if (StunEnemy.inStunRange(prevEnemy, buster) && !prevEnemy.isStunned() && (!curEnemy.isPresent() ||
+                                (!curEnemy.get().isCarryingGost() && !curEnemy.get().isTryingToTrap() &&
+                                        curEnemy.get().getPoint().equals(prevEnemy.getPoint())))) {
+                            enemyCandidates.add(prevEnemy);
                         }
+                    }
+                    if (enemyCandidates.isEmpty()) {
+                        System.err.println(String.format("WARNING, havent found stunner for buster=%s",
+                                buster.getId()));
+                    } else if (enemyCandidates.size() == 1) {
+                        lastTurnUsedStun.put(enemyCandidates.get(0).getId(), getTurn() - 1);
+                    } else {
+                        Stream<Buster> stream = enemyCandidates.stream().filter(x -> x.getUntilStunIsReady() == 0);
+                        if (stream.count() != 1) {
+                            System.err.println(String.format("Unsure who stunned buster=%s", buster.getId()));
+                            continue;
+                        }
+                        stream.forEach(x -> {
+                            lastTurnUsedStun.put(x.getId(), getTurn() - 1);
+                        });
                     }
                 }
             }
@@ -1727,6 +1745,15 @@ class Player {
         @Override
         public String formatLine() {
             return String.format("STUN %s", enemyBuster.getId());
+        }
+
+        @Override
+        public String toString() {
+            final StringBuilder sb = new StringBuilder("StunBusterAction{");
+            sb.append("buster=").append(buster);
+            sb.append(", enemyBuster=").append(enemyBuster);
+            sb.append('}');
+            return sb.toString();
         }
     }
 
