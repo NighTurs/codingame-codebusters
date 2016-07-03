@@ -1063,6 +1063,9 @@ class Player {
                     continue;
                 }
                 List<PointInTime> pathToBase = estimatePathToBase(enemy);
+                if (pathToBase.isEmpty()) {
+                    continue;
+                }
                 pathToBase.remove(pathToBase.size() - 1);
                                 int earliestIntercept = Integer.MAX_VALUE;
                 while (!pathToBase.isEmpty() && pathToBase.get(0).getTurn() <= gameState.getTurn()) {
