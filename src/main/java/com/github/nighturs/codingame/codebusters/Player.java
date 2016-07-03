@@ -3,7 +3,6 @@ package com.github.nighturs.codingame.codebusters;
 import java.util.*;
 import java.util.function.Function;
 import java.util.stream.Collectors;
-import java.util.stream.Stream;
 
 @SuppressWarnings({"UtilityClassWithoutPrivateConstructor", "NonFinalUtilityClass"})
 class Player {
@@ -1443,12 +1442,11 @@ class Player {
                     } else if (enemyCandidates.size() == 1) {
                         lastTurnUsedStun.put(enemyCandidates.get(0).getId(), getTurn() - 1);
                     } else {
-                        Stream<Buster> stream = enemyCandidates.stream().filter(x -> x.getUntilStunIsReady() == 0);
-                        if (stream.count() != 1) {
+                        if (enemyCandidates.stream().filter(x -> x.getUntilStunIsReady() == 0).count() != 1) {
                             System.err.println(String.format("Unsure who stunned buster=%s", buster.getId()));
                             continue;
                         }
-                        stream.forEach(x -> {
+                        enemyCandidates.stream().filter(x -> x.getUntilStunIsReady() == 0).forEach(x -> {
                             lastTurnUsedStun.put(x.getId(), getTurn() - 1);
                         });
                     }
